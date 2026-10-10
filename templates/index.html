@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+    <title>Chennai Navigator</title>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Chennai multimodal transit navigator — find the best bus, metro, and train routes across Chennai.">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            background: #0f172a;
+        }
+
+        #map {
+            position: absolute;
+            inset: 0;
+        }
+
+        /* ── PANEL ── */
+        .panel {
+            position: absolute;
+            z-index: 1000;
+            top: 20px;
+            left: 20px;
+            width: 400px;
+            background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            padding: 24px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.07);
+            color: #f1f5f9;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 22px;
+        }
+
+        .panel-header h1 {
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.3px;
+        }
+
+        .panel-header .logo {
+            font-size: 24px;
+        }
+
+        /* ── LOCATION ROW ── */
+        .location-section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .location-row {
+            position: relative;
+        }
+
+        .location-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #94a3b8;
+            margin-bottom: 6px;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .dot-source { background: #34d399; box-shadow: 0 0 6px #34d39988; }
+        .dot-dest   { background: #f87171; box-shadow: 0 0 6px #f8717188; }
+
+        .input-wrap {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .location-input {
+            width: 100%;
+            padding: 12px 40px 12px 14px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 12px;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            color: #f1f5f9;
+            transition: border-color 0.2s, background 0.2s;
+            outline: none;
+        }
+
+        .location-input::placeholder { color: #64748b; }
+
+        .location-input:focus {
+            border-color: #60a5fa;
+            background: rgba(96,165,250,0.07);
+        }
+
+        .clear-btn {
+            position: absolute;
+            right: 10px;
+            background: none;
+            border: none;
+            color: #64748b;
+            font-size: 16px;
+            cursor: pointer;
+            width: auto;
+            margin: 0;
+            padding: 0;
+            line-height: 1;
+            display: none;
+            transition: color 0.2s;
+        }
+
+        .clear-btn:hover { color: #f1f5f9; background: none; }
+
+        .clear-btn.visible { display: block; }
+
+        /* ── CONNECTOR LINE ── */
+        .connector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0 8px;
+            color: #475569;
+            font-size: 12px;
+        }
+
+        .connector-line {
+            flex: 1;
+            height: 1px;
+            background: rgba(255,255,255,0.08);
+        }
+
+        /* ── SEARCH BTN ── */
+        .search-btn {
+            width: 100%;
+            padding: 8px 14px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            color: #94a3b8;
+            font-size: 13px;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.2s, border-color 0.2s;
+            margin-top: 4px;
+        }
+
+        .search-btn:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.18);
+            color: #f1f5f9;
+        }
+
+        /* ── DROPDOWN ── */
+        .dropdown {
+            margin-top: 6px;
+            background: rgba(15, 23, 42, 0.98);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            overflow: hidden;
+            display: none;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .dropdown.open { display: block; }
+
+        .dropdown::-webkit-scrollbar { width: 5px; }
+        .dropdown::-webkit-scrollbar-track { background: transparent; }
+        .dropdown::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+        .place-item {
+            padding: 11px 14px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            transition: background 0.15s;
+        }
+
+        .place-item:last-child { border-bottom: none; }
+        .place-item:hover { background: rgba(96,165,250,0.1); }
+
+        .place-item-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: #e2e8f0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .place-item-type {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        .dropdown-status {
+            padding: 12px 14px;
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        /* ── SELECTED BADGE ── */
+        .selected-badge {
+            margin-top: 6px;
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .badge-source { background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.25); }
+        .badge-dest   { background: rgba(248,113,113,0.12); border: 1px solid rgba(248,113,113,0.25); }
+
+        .badge-name {
+            font-weight: 500;
+            color: #e2e8f0;
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .badge-change {
+            font-size: 11px;
+            color: #60a5fa;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .badge-change:hover { text-decoration: underline; }
+
+        /* ── DIVIDER ── */
+        .divider {
+            height: 1px;
+            background: rgba(255,255,255,0.07);
+            margin: 16px 0;
+        }
+
+        /* ── PRIORITY SELECTOR ── */
+        .priority-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #94a3b8;
+            margin-bottom: 8px;
+        }
+
+        .priority-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .priority-chip {
+            flex: 1;
+            padding: 8px 4px;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            background: rgba(255,255,255,0.04);
+            color: #94a3b8;
+            font-size: 11px;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .priority-chip:hover {
+            background: rgba(255,255,255,0.08);
+            color: #e2e8f0;
+        }
+
+        .priority-chip.active {
+            background: rgba(96,165,250,0.2);
+            border-color: #60a5fa;
+            color: #93c5fd;
+            font-weight: 600;
+        }
+
+        /* ── FIND ROUTE BTN ── */
+        #find-route-btn {
+            width: 100%;
+            margin-top: 14px;
+            padding: 14px;
+            border: none;
+            border-radius: 14px;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            color: white;
+            font-size: 15px;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+            letter-spacing: -0.2px;
+        }
+
+        #find-route-btn:hover { opacity: 0.92; transform: translateY(-1px); }
+        #find-route-btn:active { transform: translateY(0); }
+        #find-route-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+        /* ── ROUTE RESULTS ── */
+        #route-results {
+            margin-top: 14px;
+            display: none;
+        }
+
+        .route-summary {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .stat-card {
+            flex: 1;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 10px 12px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #f1f5f9;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-top: 2px;
+        }
+
+        .steps-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 240px;
+            overflow-y: auto;
+        }
+
+        .steps-list::-webkit-scrollbar { width: 5px; }
+        .steps-list::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+        .step-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px 12px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 10px;
+        }
+
+        .step-icon {
+            font-size: 18px;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        .step-info { flex: 1; }
+
+        .step-mode {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: #60a5fa;
+        }
+
+        .step-route {
+            font-size: 11px;
+            color: #94a3b8;
+        }
+
+        .step-places {
+            font-size: 13px;
+            color: #e2e8f0;
+            margin-top: 3px;
+        }
+
+        .step-meta {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        .route-error {
+            padding: 12px;
+            background: rgba(248,113,113,0.1);
+            border: 1px solid rgba(248,113,113,0.25);
+            border-radius: 10px;
+            color: #fca5a5;
+            font-size: 13px;
+        }
+
+        /* ── RESPONSIVE ── */
+        @media (max-width: 600px) {
+            .panel {
+                top: 10px;
+                left: 10px;
+                right: 10px;
+                width: auto;
+            }
+        }
+    </style>
+
+</head>
+
+<body>
+
+    <div id="map"></div>
+
+    <div class="panel" role="main">
+
+        <!-- Header -->
+        <div class="panel-header">
+            <span class="logo">🚌</span>
+            <h1>Chennai Navigator</h1>
+        </div>
+
+        <!-- SOURCE -->
+        <div class="location-section">
+
+            <div class="location-row" id="source-row">
+
+                <div class="location-label">
+                    <span class="dot dot-source"></span>
+                    Source / Starting point
+                </div>
+
+                <!-- Selected badge (shown after pick) -->
+                <div id="source-badge" class="selected-badge badge-source" style="display:none">
+                    <span class="badge-name" id="source-badge-name"></span>
+                    <span class="badge-change" onclick="clearSource()">Change</span>
+                </div>
+
+                <!-- Search input (shown when nothing selected) -->
+                <div id="source-search-wrap" class="input-wrap">
+                    <input
+                        id="source-input"
+                        class="location-input"
+                        type="text"
+                        placeholder="Search source in Chennai…"
+                        autocomplete="off"
+                        oninput="onSourceInput()"
+                        onkeydown="handleKey(event, 'source')"
+                        aria-label="Source location search"
+                    >
+                    <button class="clear-btn" id="source-clear" onclick="clearSourceInput()" title="Clear">✕</button>
+                </div>
+
+                <div id="source-dropdown" class="dropdown" role="listbox" aria-label="Source search results"></div>
+
+            </div>
+
+            <!-- Connector -->
+            <div class="connector">
+                <div class="connector-line"></div>
+                <span>↓</span>
+                <div class="connector-line"></div>
+            </div>
+
+            <!-- DESTINATION -->
+            <div class="location-row" id="dest-row">
+
+                <div class="location-label">
+                    <span class="dot dot-dest"></span>
+                    Destination
+                </div>
+
+                <div id="dest-badge" class="selected-badge badge-dest" style="display:none">
+                    <span class="badge-name" id="dest-badge-name"></span>
+                    <span class="badge-change" onclick="clearDest()">Change</span>
+                </div>
+
+                <div id="dest-search-wrap" class="input-wrap">
+                    <input
+                        id="dest-input"
+                        class="location-input"
+                        type="text"
+                        placeholder="Search destination in Chennai…"
+                        autocomplete="off"
+                        oninput="onDestInput()"
+                        onkeydown="handleKey(event, 'dest')"
+                        aria-label="Destination location search"
+                    >
+                    <button class="clear-btn" id="dest-clear" onclick="clearDestInput()" title="Clear">✕</button>
+                </div>
+
+                <div id="dest-dropdown" class="dropdown" role="listbox" aria-label="Destination search results"></div>
+
+            </div>
+
+        </div>
+
+        <!-- PRIORITY -->
+        <div class="divider"></div>
+
+        <div class="priority-label">Route preference</div>
+        <div class="priority-group" id="priority-group">
+            <button class="priority-chip active" data-priority="fastest"    onclick="setPriority(this)">⚡ Fastest</button>
+            <button class="priority-chip"        data-priority="cheapest"   onclick="setPriority(this)">💰 Cheapest</button>
+            <button class="priority-chip"        data-priority="least_walking" onclick="setPriority(this)">🚶 Less Walk</button>
+        </div>
+
+        <!-- FIND ROUTE -->
+        <button id="find-route-btn" onclick="findRoute()" disabled>
+            🗺 Find Route
+        </button>
+
+        <!-- ROUTE RESULTS -->
+        <div id="route-results"></div>
+
+    </div>
+
+
+    <script>
+
+        // ============================================================
+        // MAP
+        // ============================================================
+
+        const map = L.map("map").setView([13.0827, 80.2707], 12);
+
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+            attribution: "&copy; OpenStreetMap contributors"
+        }).addTo(map);
+
+        // ============================================================
+        // STATE
+        // ============================================================
+
+        let sourcePlace    = null;
+        let destPlace      = null;
+        let sourceMarker   = null;
+        let destMarker     = null;
+        let routeLayer     = null;
+        let priority       = "fastest";
+        let searchTimers   = { source: null, dest: null };
+
+        // ============================================================
+        // PRIORITY
+        // ============================================================
+
+        function setPriority(btn) {
+            document.querySelectorAll(".priority-chip").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            priority = btn.dataset.priority;
+        }
+
+        // ============================================================
+        // INPUT HANDLERS (debounced)
+        // ============================================================
+
+        function onSourceInput() {
+            const val = document.getElementById("source-input").value.trim();
+            document.getElementById("source-clear").classList.toggle("visible", val.length > 0);
+            clearTimeout(searchTimers.source);
+            if (val.length < 2) {
+                closeDropdown("source");
+                return;
+            }
+            searchTimers.source = setTimeout(() => searchPlaces(val, "source"), 400);
+        }
+
+        function onDestInput() {
+            const val = document.getElementById("dest-input").value.trim();
+            document.getElementById("dest-clear").classList.toggle("visible", val.length > 0);
+            clearTimeout(searchTimers.dest);
+            if (val.length < 2) {
+                closeDropdown("dest");
+                return;
+            }
+            searchTimers.dest = setTimeout(() => searchPlaces(val, "dest"), 400);
+        }
+
+        function handleKey(e, role) {
+            if (e.key === "Enter") {
+                const val = document.getElementById(role === "source" ? "source-input" : "dest-input").value.trim();
+                if (val.length >= 2) searchPlaces(val, role);
+            }
+            if (e.key === "Escape") closeDropdown(role);
+        }
+
+        // ============================================================
+        // SEARCH OSM
+        // ============================================================
+
+        async function searchPlaces(query, role) {
+
+            const dropdown = document.getElementById(role + "-dropdown");
+            dropdown.innerHTML = '<div class="dropdown-status">🔎 Searching…</div>';
+            dropdown.classList.add("open");
+
+            try {
+                const res  = await fetch("/search?place=" + encodeURIComponent(query));
+                const data = await res.json();
+
+                if (!data.results || !data.results.length) {
+                    dropdown.innerHTML = '<div class="dropdown-status">❌ No results found.</div>';
+                    return;
+                }
+
+                dropdown.innerHTML = "";
+
+                data.results.forEach(place => {
+                    const item = document.createElement("div");
+                    item.className = "place-item";
+                    item.setAttribute("role", "option");
+                    item.innerHTML = `
+                        <div class="place-item-name">${place.name}</div>
+                        <div class="place-item-type">${place.type || ""}</div>
+                    `;
+                    item.onclick = () => selectPlace(place, role);
+                    dropdown.appendChild(item);
+                });
+
+            } catch (err) {
+                console.error(err);
+                dropdown.innerHTML = '<div class="dropdown-status">❌ Search failed.</div>';
+            }
+        }
+
+        // ============================================================
+        // SELECT PLACE
+        // ============================================================
+
+        function selectPlace(place, role) {
+
+            closeDropdown(role);
+
+            if (role === "source") {
+                sourcePlace = place;
+                showBadge("source", place.name);
+                placeMarker("source", place);
+            } else {
+                destPlace = place;
+                showBadge("dest", place.name);
+                placeMarker("dest", place);
+            }
+
+            updateRouteButton();
+            clearRouteResults();
+
+            // Fit map to show both markers if both selected
+            if (sourceMarker && destMarker) {
+                map.fitBounds([
+                    [sourcePlace.lat, sourcePlace.lng],
+                    [destPlace.lat, destPlace.lng]
+                ], { padding: [60, 60] });
+            } else {
+                map.setView([place.lat, place.lng], 15);
+            }
+        }
+
+        // ============================================================
+        // MARKERS
+        // ============================================================
+
+        const sourceIcon = L.divIcon({
+            html: '<div style="background:#34d399;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4)"></div>',
+            className: "",
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
+        });
+
+        const destIcon = L.divIcon({
+            html: '<div style="background:#f87171;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4)"></div>',
+            className: "",
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
+        });
+
+        function placeMarker(role, place) {
+            if (role === "source") {
+                if (sourceMarker) map.removeLayer(sourceMarker);
+                sourceMarker = L.marker([place.lat, place.lng], { icon: sourceIcon })
+                    .addTo(map)
+                    .bindPopup(`<b>🟢 Source</b><br>${place.name}`);
+            } else {
+                if (destMarker) map.removeLayer(destMarker);
+                destMarker = L.marker([place.lat, place.lng], { icon: destIcon })
+                    .addTo(map)
+                    .bindPopup(`<b>🔴 Destination</b><br>${place.name}`);
+            }
+        }
+
+        // ============================================================
+        // BADGE / CLEAR
+        // ============================================================
+
+        function showBadge(role, name) {
+            const wrap   = document.getElementById(role === "source" ? "source-search-wrap" : "dest-search-wrap");
+            const badge  = document.getElementById(role + "-badge");
+            const badgeN = document.getElementById(role + "-badge-name");
+
+            wrap.style.display  = "none";
+            badge.style.display = "flex";
+            badgeN.textContent  = name;
+        }
+
+        function clearSource() {
+            sourcePlace = null;
+            if (sourceMarker) { map.removeLayer(sourceMarker); sourceMarker = null; }
+            document.getElementById("source-badge").style.display      = "none";
+            document.getElementById("source-search-wrap").style.display = "";
+            document.getElementById("source-input").value = "";
+            document.getElementById("source-clear").classList.remove("visible");
+            updateRouteButton();
+            clearRouteResults();
+        }
+
+        function clearDest() {
+            destPlace = null;
+            if (destMarker) { map.removeLayer(destMarker); destMarker = null; }
+            document.getElementById("dest-badge").style.display      = "none";
+            document.getElementById("dest-search-wrap").style.display = "";
+            document.getElementById("dest-input").value = "";
+            document.getElementById("dest-clear").classList.remove("visible");
+            updateRouteButton();
+            clearRouteResults();
+        }
+
+        function clearSourceInput() {
+            document.getElementById("source-input").value = "";
+            document.getElementById("source-clear").classList.remove("visible");
+            closeDropdown("source");
+        }
+
+        function clearDestInput() {
+            document.getElementById("dest-input").value = "";
+            document.getElementById("dest-clear").classList.remove("visible");
+            closeDropdown("dest");
+        }
+
+        // ============================================================
+        // DROPDOWNS
+        // ============================================================
+
+        function closeDropdown(role) {
+            document.getElementById(role + "-dropdown").classList.remove("open");
+        }
+
+        document.addEventListener("click", e => {
+            if (!e.target.closest(".location-row")) {
+                closeDropdown("source");
+                closeDropdown("dest");
+            }
+        });
+
+        // ============================================================
+        // ROUTE BUTTON
+        // ============================================================
+
+        function updateRouteButton() {
+            document.getElementById("find-route-btn").disabled = !(sourcePlace && destPlace);
+        }
+
+        function clearRouteResults() {
+            const r = document.getElementById("route-results");
+            r.innerHTML = "";
+            r.style.display = "none";
+            if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+        }
+
+        // ============================================================
+        // FIND ROUTE
+        // ============================================================
+
+        async function findRoute() {
+
+            if (!sourcePlace || !destPlace) return;
+
+            const btn = document.getElementById("find-route-btn");
+            btn.disabled = true;
+            btn.textContent = "⏳ Searching…";
+
+            const resultsDiv = document.getElementById("route-results");
+            resultsDiv.style.display = "block";
+            resultsDiv.innerHTML = `<div class="dropdown-status" style="padding:12px 0">⏳ Finding the best route…</div>`;
+
+            try {
+                const res = await fetch("/route", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        src_lat:  sourcePlace.lat,
+                        src_lng:  sourcePlace.lng,
+                        src_name: sourcePlace.name.split(",")[0].trim(),
+                        dst_lat:  destPlace.lat,
+                        dst_lng:  destPlace.lng,
+                        dst_name: destPlace.name.split(",")[0].trim(),
+                        priority: priority
+                    })
+                });
+
+                const data = await res.json();
+
+                if (!data.success || !data.steps || !data.steps.length) {
+                    resultsDiv.innerHTML = `
+                        <div class="route-error">
+                            ⚠️ No transit route found. The selected places may be far from any transit stop (metro, suburban rail or MTC bus hub), or there's no connection in the current network.
+                            <br><small style="opacity:.7;margin-top:4px;display:block">Tip: select a well-known Chennai landmark or station for best results.</small>
+                        </div>`;
+                } else {
+                    renderRoute(data, resultsDiv);
+                }
+
+            } catch (err) {
+                console.error(err);
+                resultsDiv.innerHTML = `<div class="route-error">❌ Route request failed. Is the server running?</div>`;
+            }
+
+            btn.disabled = false;
+            btn.textContent = "🗺 Find Route";
+        }
+
+        // ============================================================
+        // RENDER ROUTE
+        // ============================================================
+
+        const modeIcon = { BUS: "🚌", METRO: "🚇", TRAIN: "🚆", WALK: "🚶" };
+
+        function renderRoute(data, container) {
+
+            const { steps, total_time, total_fare } = data;
+
+            let html = `
+                <div class="divider"></div>
+                <div class="route-summary">
+                    <div class="stat-card">
+                        <div class="stat-value">${total_time}</div>
+                        <div class="stat-label">Minutes</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">₹${total_fare}</div>
+                        <div class="stat-label">Fare</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${Math.max(0, steps.length - 1)}</div>
+                        <div class="stat-label">Transfers</div>
+                    </div>
+                </div>
+                <div class="steps-list">
+            `;
+
+            steps.forEach(step => {
+                const icon  = modeIcon[step.type] || "➡️";
+                const route = step.route ? `<div class="step-route">${step.route}</div>` : "";
+                const fare  = step.fare > 0 ? ` · ₹${step.fare}` : " · Free";
+                html += `
+                    <div class="step-card">
+                        <div class="step-icon">${icon}</div>
+                        <div class="step-info">
+                            <div class="step-mode">${step.type}${route ? "" : ""}</div>
+                            ${route}
+                            <div class="step-places">${step.from} → ${step.to}</div>
+                            <div class="step-meta">${step.time} min${fare}</div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+    </script>
+
+</body>
+</html>
